@@ -2,6 +2,7 @@
 
 #include "mbed.h"
 #include "arm_book_lib.h"
+#include <vector> /// CAMBIO: Incluyo header para std::vector. Agregado para TP 05 seccion 5.e
 
 //=====[Defines]===============================================================
 
@@ -17,6 +18,8 @@
 #define KEYPAD_NUMBER_OF_COLS                    4
 #define EVENT_MAX_STORAGE                      100
 #define EVENT_NAME_MAX_LENGTH                   14
+
+//#define NEW_CODE_MK ///< CAMBIO: Agregado para TP 05 seccion 5.e
 
 //=====[Declaration of public data types]======================================
 
@@ -46,8 +49,20 @@ UnbufferedSerial uartUsb(USBTX, USBRX, 115200);
 
 AnalogIn lm35(A1);
 
-DigitalOut keypadRowPins[KEYPAD_NUMBER_OF_ROWS] = {PB_3, PB_5, PC_7, PA_15};
-DigitalIn keypadColPins[KEYPAD_NUMBER_OF_COLS]  = {PB_12, PB_13, PB_15, PC_6};
+/// COMENTARIO: Pines de la NUCLEO-F429Zl asociados al teclado matricial. Agregado para TP 05 seccion 5.a
+
+#ifndef NEW_CODE_MK
+DigitalOut keypadRowPins[KEYPAD_NUMBER_OF_ROWS] = {PB_3, PB_5, PC_7, PA_15}; //Pines correspondientes a las filas
+DigitalIn keypadColPins[KEYPAD_NUMBER_OF_COLS]  = {PB_12, PB_13, PB_15, PC_6}; //Pines correspondientes a las columnas
+#endif
+
+#ifdef NEW_CODE_MK
+/// CAMBIO: Agregado para TP 05 seccion 5.e
+// Reemplazamos los arrays de C con vectores de C++
+std::vector<DigitalOut> keypadRowPins( {PB_3, PB_5, PC_7, PA_15} ); // Vectores para los pines de fila
+std::vector<DigitalIn> keypadColPins( {PB_12, PB_13, PB_15, PC_6} );  // Vectores para los pines de columna
+#endif
+
 
 //=====[Declaration and initialization of public global variables]=============
 
@@ -120,6 +135,32 @@ char matrixKeypadUpdate();
 
 int main()
 {
+    /**
+     COMENTARIO: Agregado para TP 05 - seccion 5.b
+     Por lo que se ve en el codigo, la maquina de estado correspondiente al teclado matricial se encuentra en la funcion matrixKeypadUpdate()
+     Esta se activará cada vez que se entre a la funcion alarmDeactivationUpdate() y el sistema no este bloqueado.
+     Claramente, si no se ingresa nada en el teclado matricial, la maquina de estados no deberia salir del estado MATRIX_KEYPAD_SCANNING.
+
+     Esta verficacion se realiza cada TIME_INCREMENT_MS, es decir, cada 10 ms aproximadamente.
+    */
+
+    /**
+    COMENTARIO: Agregado para TP 05 - seccion 6
+    En el caso del RTC, este se inicializa cuando el usuario presiona la tecla 's' o 'S' en la terminal (esto esta dentro de un case en uartTask() ).
+    Una vez se presiona se tiene que ingresar fecha y hora actual, las cuales se iran cargando
+    en la struct rtcTime que asu vez tiene adentro la estructura tm definida en 'time.h'.
+    Finalmente se hace uso de la funcion set_time() para iniciar y setear el RTC.
+
+    Si se desconecta la placa de la PC, se pierde la cuenta del RTC y este tiene que volver a se configurado nuevamente.
+
+    Para solucionar este problema podria haber varias soluciones:
+    1. Forzar a que cada vez que se reinicia el sistema el usuario tenga que cargar nuevamente la fecha y la hora (mala solucion).
+    2. Una mejor solucion via software seria (en caso de contar con una conexion WI-FI) realizar una funcion de inicializacion
+       que este antes de inputsInit() en la funcion main(), que pullee los datos de hora y fecha a un servidor NTP (por ejemplo, el de google)
+       para configurarse automáticamente.
+    3. Una solucion a nivel de Hardware seria tener una bateria auxiliar, que alimente al sistema en caso de quedarse sin la fuente de energia primaria
+       para que el RTC no quede desconfigurado.
+    */
     inputsInit();
     outputsInit();
     while (true) {
@@ -542,7 +583,7 @@ char matrixKeypadScan()
     int row = 0;
     int col = 0;
     int i = 0;
-
+#ifndef NEW_CODE_MK
     for( row=0; row<KEYPAD_NUMBER_OF_ROWS; row++ ) {
 
         for( i=0; i<KEYPAD_NUMBER_OF_ROWS; i++ ) {
@@ -557,6 +598,27 @@ char matrixKeypadScan()
             }
         }
     }
+#endif
+
+#ifdef NEW_CODE_MK
+// CAMBIO: Agregado para TP 05 seccion 5.e
+    for( row = 0; row < keypadRowPins.size(); ++row ) {
+
+        for( i = 0; i < keypadRowPins.size(); ++i ) {
+            keypadRowPins.at(i) = ON;
+        }
+
+        keypadRowPins.at(row) = OFF;
+
+        for( col = 0; col < keypadColPins.size(); ++col ) {
+            if( keypadColPins.at(col) == OFF ) {
+                return matrixKeypadIndexToCharArray[row*keypadRowPins.size() + col]
+            }
+        } 
+    }
+
+#endif
+
     return '\0';
 }
 
@@ -568,6 +630,7 @@ char matrixKeypadUpdate()
     switch( matrixKeypadState ) {
 
     case MATRIX_KEYPAD_SCANNING:
+        //printf( "\r\nState: MATRIX KEYPAD SCANNING\r\n"); /// CAMBIO: Agregado para TP 05 seccion 5.c
         keyDetected = matrixKeypadScan();
         if( keyDetected != '\0' ) {
             matrixKeypadLastKeyPressed = keyDetected;
@@ -577,6 +640,7 @@ char matrixKeypadUpdate()
         break;
 
     case MATRIX_KEYPAD_DEBOUNCE:
+        //printf( "\r\nState: MATRIX_KEYPAD_DEBOUNCE\r\n"); /// CAMBIO: Agregado para TP 05 seccion 5.c
         if( accumulatedDebounceMatrixKeypadTime >=
             DEBOUNCE_KEY_TIME_MS ) {
             keyDetected = matrixKeypadScan();
@@ -591,6 +655,7 @@ char matrixKeypadUpdate()
         break;
 
     case MATRIX_KEYPAD_KEY_HOLD_PRESSED:
+        //printf( "\r\nState: MATRIX_KEYPAD_KEY_HOLD_PRESSED\r\n"); /// CAMBIO: Agregado para TP 05 seccion 5.c
         keyDetected = matrixKeypadScan();
         if( keyDetected != matrixKeypadLastKeyPressed ) {
             if( keyDetected == '\0' ) {
